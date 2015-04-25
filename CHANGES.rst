@@ -1,6 +1,16 @@
 CHANGES
 =======
 
+0.9 (unreleased)
+---------------
+
+Features
+++++++++
+
+- An option ``forward headers`` to forward headers from original request
+
+
+
 0.8 (2011-07-07)
 ----------------
 
