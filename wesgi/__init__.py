@@ -1,9 +1,7 @@
 import re
-import sys
 import threading
 import collections
 from httplib2 import Http
-from urlparse import urlsplit, urlunsplit
 
 import webob
 
@@ -160,7 +158,7 @@ class MiddleWare(object):
         if isinstance(policy, basestring):
             policy = _POLICIES[policy]
         self.policy = policy
-        self.policy.forward_headers = True
+        self.policy.forward_headers = forward_headers
         self.headers = {}
         self.http = policy.http()
 
