@@ -1,7 +1,9 @@
-import re
-import threading
-import collections
 from httplib2 import Http
+from urlparse import urlsplit, urlunsplit
+import collections
+import re
+import sys
+import threading
 
 import webob
 
