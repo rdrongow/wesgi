@@ -10,7 +10,7 @@ import webob
 __all__ = ['Policy', 'AkamaiPolicy', 'MiddleWare', 'InvalidESIMarkup', 'RecursionError']
 
 try:
-    from sys import getsizeof 
+    from sys import getsizeof
 except ImportError:
     # Python 2.5
     def getsizeof(obj):
@@ -27,9 +27,11 @@ class Policy(object):
     max_nested_includes = None
     chase_redirect = False
     cache = None
+    forward_headers = False
 
     def http(self):
-        http = Http(cache=self.cache, timeout=5, disable_ssl_certificate_validation=True)
+        http = Http(cache=self.cache, timeout=5,
+                    disable_ssl_certificate_validation=True)
         http.follow_redirects = self.chase_redirect
         return http
 
@@ -75,7 +77,7 @@ class LRUCache(object):
                 refcount[k] = 1
             if len(queue) > maxqueue:
                 # if we're still too big, and have no duplicates
-                # there's probably something hammering the same thing remove 
+                # there's probably something hammering the same thing remove
                 # queuedrop items not in our cache
                 count = 0
                 queue.append(_marker)
@@ -123,7 +125,7 @@ class LRUCache(object):
             queue.appendleft(orig_key)
             refcount[orig_key] += 1
             cache[orig_key] = value
-        
+
         def locked_set(key, value):
             lock.acquire()
             try:
@@ -144,16 +146,22 @@ class LRUCache(object):
 
 class MiddleWare(object):
 
-    def __init__(self, app, policy='default', debug=True):
+    def __init__(self, app, policy='default', forward_headers=False, debug=True):
+
         self.debug = debug
         self.app = app
         if isinstance(policy, basestring):
             policy = _POLICIES[policy]
         self.policy = policy
+        self.policy.forward_headers = True
+        self.headers = {}
         self.http = policy.http()
 
     def __call__(self, environ, start_response):
         req = webob.Request(environ)
+        if self.policy.forward_headers:
+            self.headers = dict(req.headers.items())
+
         resp = req.get_response(self.app)
         if resp.content_type == 'text/html' and resp.status_int == 200:
             orig_scheme = environ['wsgi.url_scheme']
@@ -220,11 +228,11 @@ class MiddleWare(object):
                 continue
             # get content to insert
             try:
-                new_content = _include_url(match.group('src'), require_ssl, policy.chase_redirect, self.http)
+                new_content = _include_url(match.group('src'), require_ssl, policy.chase_redirect, self.http, headers=self.headers)
             except:
                 if match.group('alt'):
                     try:
-                        new_content = _include_url(match.group('alt'), require_ssl, policy.chase_redirect, self.http)
+                        new_content = _include_url(match.group('alt'), require_ssl, policy.chase_redirect, self.http, headers=self.headers)
                     except:
                         if match.group('onerror') == 'continue':
                             new_content = ''
@@ -290,11 +298,11 @@ class _HTTPError(Exception):
         message = 'Url returned %s: %s' % (status, url)
         super(_HTTPError, self).__init__(message)
 
-def _include_url(orig_url, require_ssl, chase_redirect, http):
+def _include_url(orig_url, require_ssl, chase_redirect, http, headers=None):
     url = urlsplit(orig_url)
     if require_ssl and url.scheme != 'https':
         raise IncludeError('SSL required, cannot include: %s' % (orig_url, ))
-    resp, content = http.request(orig_url)
+    resp, content = http.request(orig_url, headers=headers)
     if resp.status == 200:
         return content
     raise _HTTPError(orig_url, resp.status)
