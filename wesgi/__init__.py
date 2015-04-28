@@ -27,6 +27,7 @@ def _parse_bool(arg):
     return {'true': True,
             'false': False}[arg.lower()]
 
+
 def filter_app_factory(app,
                        global_config,
                        **kw):
@@ -87,13 +88,12 @@ _POLICIES = {'default': Policy.from_cfg,
              'akamai': AkamaiPolicy.from_cfg}
 
 
-
 #
 # Cache
 #
 
-class _Counter(dict):
 
+class _Counter(dict):
     def __missing__(self, key):
         return 0
 
