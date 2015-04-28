@@ -1,7 +1,16 @@
 CHANGES
 =======
 
-0.8 (2011-07-07)
+0.10.dev0 (unreleased)
+---------------------
+
+Features
+++++++++
+
+- Add option to forward_headers from original request to middleware
+
+
+0.9 (2011-07-07)
 ----------------
 
 Features
