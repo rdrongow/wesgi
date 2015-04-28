@@ -9,6 +9,7 @@ if os.environ.get('WESGI_ALL_TESTS', 'false').lower() in ('true', '1', 't'):
     all_tests = True
 
 
+
 def mock_http_request(http, response=None, content=None):
     """Return a httplib2.Http with request() mocked out"""
     http.request = Mock(spec_set=[])
@@ -20,6 +21,7 @@ def mock_http_request(http, response=None, content=None):
             response = Response()
         mock.return_value = response, content
 
+
 def Response(status=200, headers={}):
     import httplib2
     assert isinstance(status, int)
@@ -27,6 +29,7 @@ def Response(status=200, headers={}):
     if headers is not None:
         d.update(headers)
     return httplib2.Response(d)
+
 
 def run_mw(mw):
     start_response = Mock()
@@ -38,6 +41,7 @@ def run_mw(mw):
     response = mw(request.environ, start_response)
     return ''.join(response)
 
+
 def make_mw(app=None, **kw):
     status = kw.pop('http_status', 200)
     headers = kw.pop('http_headers', None)
@@ -47,8 +51,10 @@ def make_mw(app=None, **kw):
         app = make_app(body=body)
     from wesgi import MiddleWare
     mw = MiddleWare(app, **kw)
-    mock_http_request(mw.http, Response(status=status, headers=headers), content)
+    mock_http_request(
+        mw.http, Response(status=status, headers=headers), content)
     return mw
+
 
 def make_app(body='', content_type='text/html', status=200):
     def _app(environ, start_response):
@@ -69,13 +75,16 @@ class TestProcessInclude(TestCase):
         data = mw._process_include('something')
         self.assertEquals(data, None)
         self.assertFalse(mock.called)
-        data = mw._process_include('<html><head></head><body><h1>HI</h1><esi:not_an_include whatever="bobo"/></body></html>')
+        data = mw._process_include(
+            '<html><head></head><body><h1>HI</h1>'
+            '<esi:not_an_include whatever="bobo"/></body></html>')
         self.assertEquals(data, None)
         self.assertFalse(mock.called)
 
     def test_match(self):
         mw = make_mw(http_content='<div>example</div>')
-        data = mw._process_include('before<esi:include src="http://www.example.com"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com"/>after')
         self.assertEquals(data, 'before<div>example</div>after')
         self.assertEquals(mw.http.request.call_count, 1)
         self.assertEquals(
@@ -83,7 +92,9 @@ class TestProcessInclude(TestCase):
             "call('http://www.example.com', headers={})")
         # onerror="continue" has no effect
         mw.http.request.reset_mock()
-        data = mw._process_include('before<esi:include src="http://www.example.com" onerror="continue"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com" '
+            'onerror="continue"/>after')
         self.assertEquals(data, 'before<div>example</div>after')
         self.assertEquals(mw.http.request.call_count, 1)
         self.assertEquals(
@@ -97,14 +108,24 @@ class TestProcessInclude(TestCase):
             if not counter:
                 return Response(), '-last'
             count = counter.pop(0)
-            fragment = count + 1 # the nth fragment that we are including
-            count += 2 # count starts at 0, but first time we include is level 2
-            return Response(), '-%s<esi:include src="http://www.example.com/%s"/>' % (count, fragment)
+            fragment = count + 1  # the nth fragment that we are including
+
+            # count starts at 0, but first time we include is level 2
+            count += 2
+
+            return Response(), (
+                '-%s<esi:include '
+                'src="http://www.example.com/%s"/>' % (count, fragment))
+
         mw = make_mw()
         mock = mw.http.request
         mock.side_effect = side_effect
-        data = mw._process_include('level-1<esi:include src="http://www.example.com"/>-after')
-        self.assertEquals(data, 'level-1-2-3-4-5-6-7-8-9-10-11-last-after')
+        data = mw._process_include(
+            'level-1<esi:include '
+            'src="http://www.example.com"/>-after')
+        self.assertEquals(
+            data,
+            'level-1-2-3-4-5-6-7-8-9-10-11-last-after')
         self.assertEquals(mock.call_count, 11)
         self.assertEquals(str(mock.call_args), "call('http://www.example.com/10', headers={})")
         # Akamai FAQ http://www.akamai.com/dl/technical_publications/esi_faq.pdf
@@ -112,22 +133,32 @@ class TestProcessInclude(TestCase):
         # when using the akami policy
         counter.extend(range(5))
         mw.policy = AkamaiPolicy()
-        self.assertRaises(RecursionError, mw._process_include, 'level-1<esi:include src="http://www.example.com"/>-after')
+        self.assertRaises(
+            RecursionError,
+            mw._process_include,
+            'level-1<esi:include src="http://www.example.com"/>-after')
         counter.extend(range(4))
-        data = mw._process_include('level-1<esi:include src="http://www.example.com"/>-after')
+        data = mw._process_include(
+            'level-1<esi:include src="http://www.example.com"/>-after')
         self.assertEquals(data, 'level-1-2-3-4-5-last-after')
         self.assertEquals(str(mock.call_args), "call('http://www.example.com/4', headers={})")
         # Even with the akamai policy, if we're not in debug mode, no error is raised
         counter.extend(range(10))
         mw.debug = False
-        data = mw._process_include('level-1<esi:include src="http://www.example.com"/>-after')
-        self.assertEquals(data, 'level-1-2-3-4-5-6-7-8-9-10-11-last-after')
+        data = mw._process_include(
+            'level-1<esi:include src="http://www.example.com"/>-after')
+        self.assertEquals(
+            data, 'level-1-2-3-4-5-6-7-8-9-10-11-last-after')
 
     def test_invalid(self):
         from wesgi import InvalidESIMarkup
         mw = make_mw()
-        invalid1 = 'before<esi:include krud src="http://www.example.com"/>after'
-        invalid2 = 'before<esi:include krud="krud" src="http://www.example.com"/>after'
+        invalid1 = (
+            'before<esi:include krud '
+            'src="http://www.example.com"/>after')
+        invalid2 = (
+            'before<esi:include krud="krud" '
+            'src="http://www.example.com"/>after')
         self.assertRaises(InvalidESIMarkup, mw._process_include, invalid1)
         self.assertRaises(InvalidESIMarkup, mw._process_include, invalid2)
         # if debug is False, these errors are not raised
@@ -147,30 +178,43 @@ class TestProcessInclude(TestCase):
         mw = make_mw()
         mw.http.request.side_effect = side_effect
         # without src we get our exception
-        self.assertRaises(Oops, mw._process_include, 'before<esi:include src="http://www.example.com"/>after')
+        self.assertRaises(
+            Oops,
+            mw._process_include,
+            'before<esi:include src="http://www.example.com"/>after')
         self.assertEquals(mw.http.request.call_count, 1)
         self.assertEquals(str(mw.http.request.call_args), "call('http://www.example.com', headers={})")
         # it is still raised if we turn off debug mode (it's specified in the ESI spec)
         mw.http.request.side_effect = side_effect
         mw.debug = False
-        self.assertRaises(Oops, mw._process_include, 'before<esi:include src="http://www.example.com"/>after')
-        # unless onerror="continue", in which case the include is silently deleted
+        self.assertRaises(
+            Oops,
+            mw._process_include,
+            'before<esi:include src="http://www.example.com"/>after')
+        # unless onerror="continue", in which case the
+        # include is silently deleted
         mw = make_mw()
         mw.http.request.side_effect = side_effect
-        data = mw._process_include('before<esi:include src="http://www.example.com" onerror="continue"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com" '
+            'onerror="continue"/>after')
         self.assertEquals(data, 'beforeafter')
         self.assertEquals(mw.http.request.call_count, 1)
         self.assertEquals(str(mw.http.request.call_args), "call('http://www.example.com', headers={})")
         # if we add a alt we get back the info from alt
         mw = make_mw()
         mw.http.request.side_effect = side_effect
-        data = mw._process_include('before<esi:include src="http://www.example.com" alt="http://alt.example.com"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com" '
+            'alt="http://alt.example.com"/>after')
         self.assertEquals(data, 'before<div>example alt</div>after')
         self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
         # onerror = "continue" has no effect if there is only one error and alt is specified
         mw = make_mw()
         mw.http.request.side_effect = side_effect
-        data = mw._process_include('before<esi:include src="http://www.example.com" alt="http://alt.example.com" onerror="continue"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com" '
+            'alt="http://alt.example.com" onerror="continue"/>after')
         self.assertEquals(data, 'before<div>example alt</div>after')
         self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
         # If both calls to mw.http.request fail, the second exception is raised
@@ -181,6 +225,7 @@ class TestProcessInclude(TestCase):
                 raise OopsAlt('oops')
             mw.http.request.side_effect = second_call
             raise Oops('oops')
+
         mw = make_mw()
         mw.http.request.side_effect = side_effect
         self.assertRaises(OopsAlt, mw._process_include, 'before<esi:include src="http://www.example.com" alt="http://alt.example.com"/>after')
@@ -188,11 +233,18 @@ class TestProcessInclude(TestCase):
         # it is still raised if we turn off debug mode (it's specified in the ESI spec)
         mw.http.request.side_effect = side_effect
         mw.debug = False
-        self.assertRaises(OopsAlt, mw._process_include, 'before<esi:include src="http://www.example.com" alt="http://alt.example.com"/>after')
-        # unless onerror="continue", in which case the include is silently deleted
+        self.assertRaises(
+            OopsAlt,
+            mw._process_include,
+            'before<esi:include src="http://www.example.com" '
+            'alt="http://alt.example.com"/>after')
+        # unless onerror="continue", in which case the include
+        # is silently deleted
         mw = make_mw()
         mw.http.request.side_effect = side_effect
-        data = mw._process_include('before<esi:include src="http://www.example.com" alt="http://alt.example.com" onerror="continue"/>after')
+        data = mw._process_include(
+            'before<esi:include src="http://www.example.com" '
+            'alt="http://alt.example.com" onerror="continue"/>after')
         self.assertEquals(data, 'beforeafter')
         self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
 
@@ -201,17 +253,22 @@ class TestProcessInclude(TestCase):
         import time
         mw = make_mw(http_content='<div>example</div>')
         this_dir = os.path.dirname(__file__)
-        test_data = '<esi:include src="http://www.google.com" />\n\t\t\r\n\t\t\t\r\n\t\t\t\t\r\n\t\t\t\t\r\n\t\t\t\r\n\t\t</p>\r\n'
+        test_data = (
+            '<esi:include src="http://www.google.com" />'
+            '\n\t\t\r\n\t\t\t\r\n\t\t\t\t\r\n\t\t\t\t\r\n'
+            '\t\t\t\r\n\t\t</p>\r\n')
         now = time.time()
         data = mw._process_include(test_data)
         used = time.time() - now
         self.assertTrue(used < 0.01, 'Test took too long: %s seconds' % used)
 
+
 class TestMiddleWare(TestCase):
 
     def test_process(self):
-        mw = make_mw(app_body='before<esi:include src="http://www.example.com"/>after',
-                     http_content="<div>example</div>")
+        mw = make_mw(
+            app_body='before<esi:include src="http://www.example.com"/>after',
+            http_content="<div>example</div>")
 
         response = run_mw(mw)
 
@@ -234,19 +291,25 @@ class TestMiddleWare(TestCase):
 
     def test_process_ssl(self):
         from wesgi import IncludeError
-        mw = make_mw(app_body='before<esi:include src="http://www.example.com"/>after',
-                     http_content='<div>example</div>')
+        mw = make_mw(
+            app_body='before<esi:include src="http://www.example.com"/>after',
+            http_content='<div>example</div>')
 
         # trying to include an http: url from an https page raises an error
         start_response = Mock()
         request = webob.Request.blank("")
         request.environ['wsgi.url_scheme'] = 'https'
-        response = self.assertRaises(IncludeError, mw, request.environ, start_response)
+        response = self.assertRaises(
+            IncludeError,
+            mw,
+            request.environ,
+            start_response)
         self.assertEquals(mw.http.request.call_count, 0)
 
         # https urls do work
-        mw = make_mw(app_body='before<esi:include src="https://www.example.com"/>after',
-                     http_content='<div>example</div>')
+        mw = make_mw(
+            app_body='before<esi:include src="https://www.example.com"/>after',
+            http_content='<div>example</div>')
         response = mw(request.environ, start_response)
         self.assertEquals(mw.http.request.call_count, 1)
         self.assertEquals(
@@ -310,6 +373,7 @@ class TestPolicy(TestCase):
         from wesgi import Policy
         policy = Policy()
         self.assertEquals(policy.cache, None)
+
 
 class TestLRUCache(TestCase):
 
@@ -413,10 +477,12 @@ class TestLRUCache(TestCase):
     def test_queue_compaction(self):
         from wesgi import LRUCache
         cache = LRUCache(maxsize=10)
-        [cache.get(1) for i in range(100)] # fill up to maxqueue
-        self.assertEquals(list(cache._queue), [1 for i in xrange(100)]) # our queue is full
+        [cache.get(1) for i in range(100)]  # fill up to maxqueue
+        self.assertEquals(
+            list(cache._queue),
+            [1 for i in xrange(100)])  # our queue is full
         self.assertEquals(cache._refcount, {1: 100})
-        cache.get(1) #push us over the limit
+        cache.get(1)  # push us over the limit
         self.assertEquals(list(cache._queue), [1])
         self.assertEquals(cache._refcount, {1: 1})
         self.assertInvariants(cache)
@@ -428,7 +494,7 @@ class TestLRUCache(TestCase):
         cache.get(2)
         [cache.get(1) for i in range(49)]
         cache.get(2)
-        [cache.get(1) for i in range(50)] # Push us one over the limit
+        [cache.get(1) for i in range(50)]  # Push us one over the limit
         self.assertEquals(list(cache._queue), [2, 1])
         self.assertEquals(cache._refcount, {1: 1, 2: 1})
         # and after
@@ -436,7 +502,7 @@ class TestLRUCache(TestCase):
         [cache.get(1) for i in range(49)]
         cache.get(2)
         [cache.get(1) for i in range(50)]
-        cache.get(2) # Push us one over the limit
+        cache.get(2)  # Push us one over the limit
         self.assertEquals(list(cache._queue), [1, 2])
         self.assertEquals(cache._refcount, {1: 1, 2: 1})
         self.assertInvariants(cache)
@@ -445,22 +511,26 @@ class TestLRUCache(TestCase):
         # the queue is emptied when it gets too big and we cannot compact
         from wesgi import LRUCache
         cache = LRUCache(maxsize=10)
-        [cache.get(i) for i in range(100)] # fill up to maxqueue
-        self.assertEquals(list(cache._queue), range(100)) # all elements are in the queue
+        [cache.get(i) for i in range(100)]  # fill up to maxqueue
+        self.assertEquals(
+            list(cache._queue), range(100))  # all elements are in the queue
         self.assertEquals(len(cache._queue), 100)
-        self.assertEquals(cache._refcount, dict([(i, 1) for i in range(100)]))
-        cache.get(100) #push us over the limit
+        self.assertEquals(
+            cache._refcount, dict([(i, 1) for i in range(100)]))
+        cache.get(100)  # push us over the limit
         self.assertEquals(len(cache._queue), 80)
         self.assertEquals(list(cache._queue), range(21, 101))
-        self.assertEquals(cache._refcount, dict([(i, 1) for i in range(21, 101)]))
+        self.assertEquals(
+            cache._refcount, dict([(i, 1) for i in range(21, 101)]))
         self.assertInvariants(cache)
 
     def test_queue_emptying_memory_leak(self):
-        # When we empty the queue, we need to make sure that elements in our cache stay in the queue
+        # When we empty the queue, we need to make sure
+        # that elements in our cache stay in the queue
         from wesgi import LRUCache
         cache = LRUCache(maxsize=10)
         cache.set('x', 'y')
-        [cache.get(i) for i in range(100)] # fill queue over maxsize
+        [cache.get(i) for i in range(100)]  # fill queue over maxsize
         self.assertEquals(cache._cache, {'x': 'y'})
         self.assertEquals(len(cache._queue), 80)
         self.assertEquals(list(cache._queue), ['x'] + range(21, 100))
@@ -472,13 +542,13 @@ class TestLRUCache(TestCase):
     def test_thread_fuzzing(self):
         from wesgi import LRUCache
         import threading
-        import time
         max = 100
         no_threads = 2
         if all_tests:
             max = 500
             no_threads = 5
         cache = LRUCache(maxsize=5)
+
         def pound():
             for k in xrange(max):
                 for i in range(10):
@@ -490,6 +560,7 @@ class TestLRUCache(TestCase):
                     cache.get(i + 3)
                     cache.delete(i + 1)
                     cache.set(i + 2, str(k))
+
         threads = []
         for i in range(no_threads):
             threads.append(threading.Thread(target=pound))
@@ -543,12 +614,14 @@ if all_tests:
             result, content = http.request('https://encrypted.google.com/')
             self.assertTrue("google" in content.lower())
 
+
 def load_tests(loader, standard_tests, pattern):
     if all_tests:
         # run tests in our README.txt
         import doctest
         this_dir = os.path.dirname(__file__)
-        readme = doctest.DocFileTest(os.path.join(this_dir, '..', 'README.rst'),
-                                     module_relative=False)
+        readme = doctest.DocFileTest(
+            os.path.join(this_dir, '..', 'README.rst'),
+            module_relative=False)
         standard_tests.addTest(readme)
     return standard_tests

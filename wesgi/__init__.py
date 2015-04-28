@@ -1,13 +1,14 @@
+from httplib2 import Http
+from urlparse import urlsplit, urlunsplit
+import collections
 import re
 import sys
 import threading
-import collections
-from httplib2 import Http
-from urlparse import urlsplit, urlunsplit
 
 import webob
 
-__all__ = ['Policy', 'AkamaiPolicy', 'MiddleWare', 'InvalidESIMarkup', 'RecursionError']
+__all__ = ['Policy', 'AkamaiPolicy', 'MiddleWare', 'InvalidESIMarkup',
+           'RecursionError']
 
 try:
     from sys import getsizeof
@@ -19,10 +20,10 @@ except ImportError:
             return len(obj)
         return 0
 
+
 #
 # Policies that can make the middleware work like different ESI processors
 #
-
 class Policy(object):
     max_nested_includes = None
     chase_redirect = False
@@ -35,6 +36,7 @@ class Policy(object):
         http.follow_redirects = self.chase_redirect
         return http
 
+
 class AkamaiPolicy(Policy):
     """Configure the middleware to behave like akamai"""
     max_nested_includes = 5
@@ -43,13 +45,14 @@ class AkamaiPolicy(Policy):
 #
 # Cache
 #
-
 _marker = object()
+
 
 class _Counter(dict):
 
     def __missing__(self, key):
         return 0
+
 
 class LRUCache(object):
 
@@ -109,8 +112,10 @@ class LRUCache(object):
             return None
 
         def set(key, value):
-            if max_object_size is not None and getsizeof(value) > max_object_size:
-                # note, this doesn't take into account the size of objects referenced by value
+            if (max_object_size is not None and
+                    getsizeof(value) > max_object_size):
+                # note, this doesn't take into account the size of objects
+                # referenced by value
                 return
             orig_key = key
             if len(cache) >= maxsize:
@@ -139,6 +144,7 @@ class LRUCache(object):
         self.get = get
         self.set = locked_set
         self.delete = delete
+
 
 #
 # The middleware
@@ -185,7 +191,7 @@ class MiddleWare(object):
             if len(body) < match.end() + 1:
                 continue
             if body[match.end()] != '>':
-                #invalid comment, contains --, ignore it
+                # invalid comment, contains --, ignore it
                 continue
             # we found a comment
             c_idx = match.end()
@@ -197,7 +203,8 @@ class MiddleWare(object):
         policy = self.policy
         comments = list(comments)
         require_ssl = not (orig_scheme == 'http')
-        if debug and policy.max_nested_includes is not None and level > policy.max_nested_includes:
+        if (debug and policy.max_nested_includes is not None and
+                level > policy.max_nested_includes):
             raise RecursionError('Too many nested includes', level, body)
         c_start = c_end = None
         if comments:
@@ -221,7 +228,8 @@ class MiddleWare(object):
             new.append(body[index:match.start()])
             if match.group('other') or not match.group('src'):
                 if debug:
-                    raise InvalidESIMarkup("Invalid ESI markup: %s" % body[match.start():match.end()])
+                    raise InvalidESIMarkup("Invalid ESI markup: {}".format(
+                        body[match.start():match.end()]))
                 # silently ignore this match
                 index = match.end()
                 continue
@@ -244,7 +252,10 @@ class MiddleWare(object):
             if new_content:
                 # recurse to process any includes in the new content
                 new_commented = self._commented(new_content)
-                p = self._process_include(new_content, orig_scheme=orig_scheme, comments=new_commented, level=level + 1)
+                p = self._process_include(
+                    new_content,
+                    orig_scheme=orig_scheme, comments=new_commented,
+                    level=level + 1)
                 if p is not None:
                     new_content = p
             new.append(new_content)
@@ -255,12 +266,14 @@ class MiddleWare(object):
         new.append(body[index:])
         return ''.join(new)
 
+
 #
 # Exceptions we can raise
 #
 
 class InvalidESIMarkup(Exception):
     pass
+
 
 class RecursionError(Exception):
 
@@ -269,6 +282,7 @@ class RecursionError(Exception):
         self.msg = msg
         self.body = body
         self.level = level
+
 
 class IncludeError(Exception):
     pass
@@ -280,15 +294,17 @@ class IncludeError(Exception):
 _POLICIES = {'default': Policy(),
              'akamai': AkamaiPolicy()}
 
-_re_include = re.compile(r'''<esi:include'''
-                         r'''(?:\s+(?:''' # whitespace at start of tag
-                             r'''src=["']?(?P<src>[^"'\s]*)["']?''' # find src=
-                             r'''|alt=["']?(?P<alt>[^"'\s]*)["']?''' # or find alt=
-                             r'''|onerror=["']?(?P<onerror>[^"'\s]*)["']?''' # or find onerror=
-                             r'''|(?P<other>[^\s><]+)?''' # or find something eles
-                         r'''))+\s*/>''') # match whitespace at the end and the end tag
+_re_include = re.compile(
+    r'''<esi:include'''
+    r'''(?:\s+(?:'''  # whitespace at start of tag
+    r'''src=["']?(?P<src>[^"'\s]*)["']?'''  # find src=
+    r'''|alt=["']?(?P<alt>[^"'\s]*)["']?'''  # or find alt=
+    r'''|onerror=["']?(?P<onerror>[^"'\s]*)["']?'''  # or find onerror=
+    r'''|(?P<other>[^\s><]+)?'''  # or find something eles
+    r'''))+\s*/>''')  # match whitespace at the end and the end tag
 
 _re_comment = re.compile(r'''<!--esi.*?--''', flags=re.DOTALL)
+
 
 class _HTTPError(Exception):
 
@@ -305,4 +321,3 @@ def _include_url(orig_url, require_ssl, chase_redirect, http, headers={}):
     if resp.status == 200:
         return content
     raise _HTTPError(orig_url, resp.status)
-
