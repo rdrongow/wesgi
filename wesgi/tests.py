@@ -9,7 +9,6 @@ if os.environ.get('WESGI_ALL_TESTS', 'false').lower() in ('true', '1', 't'):
     all_tests = True
 
 
-
 def mock_http_request(http, response=None, content=None):
     """Return a httplib2.Http with request() mocked out"""
     http.request = Mock(spec_set=[])
@@ -104,6 +103,7 @@ class TestProcessInclude(TestCase):
     def test_recursive(self):
         from wesgi import RecursionError, AkamaiPolicy
         counter = range(10)
+
         def side_effect(*args, **kwargs):
             if not counter:
                 return Response(), '-last'
@@ -127,10 +127,13 @@ class TestProcessInclude(TestCase):
             data,
             'level-1-2-3-4-5-6-7-8-9-10-11-last-after')
         self.assertEquals(mock.call_count, 11)
-        self.assertEquals(str(mock.call_args), "call('http://www.example.com/10', headers={})")
-        # Akamai FAQ http://www.akamai.com/dl/technical_publications/esi_faq.pdf
-        # claims that they support 5 levels of nested includes. Ours should do the same
-        # when using the akami policy
+        self.assertEquals(
+            str(mock.call_args),
+            "call('http://www.example.com/10', headers={})")
+        # Akamai FAQ
+        # http://www.akamai.com/dl/technical_publications/esi_faq.pdf
+        # claims that they support 5 levels of nested includes.
+        # Ours should do the same when using the akami policy.
         counter.extend(range(5))
         mw.policy = AkamaiPolicy()
         self.assertRaises(
@@ -141,8 +144,11 @@ class TestProcessInclude(TestCase):
         data = mw._process_include(
             'level-1<esi:include src="http://www.example.com"/>-after')
         self.assertEquals(data, 'level-1-2-3-4-5-last-after')
-        self.assertEquals(str(mock.call_args), "call('http://www.example.com/4', headers={})")
-        # Even with the akamai policy, if we're not in debug mode, no error is raised
+        self.assertEquals(
+            str(mock.call_args),
+            "call('http://www.example.com/4', headers={})")
+        # Even with the akamai policy, if we're not in debug mode,
+        # no error is raised
         counter.extend(range(10))
         mw.debug = False
         data = mw._process_include(
@@ -168,8 +174,10 @@ class TestProcessInclude(TestCase):
         self.assertFalse(mw.http.request.called)
 
     def test_some_http_error_cases(self):
+
         class Oops(Exception):
             pass
+
         def side_effect(*args, **kwargs):
             def second_call(*args, **kwargs):
                 return Response(), '<div>example alt</div>'
@@ -183,8 +191,11 @@ class TestProcessInclude(TestCase):
             mw._process_include,
             'before<esi:include src="http://www.example.com"/>after')
         self.assertEquals(mw.http.request.call_count, 1)
-        self.assertEquals(str(mw.http.request.call_args), "call('http://www.example.com', headers={})")
-        # it is still raised if we turn off debug mode (it's specified in the ESI spec)
+        self.assertEquals(
+            str(mw.http.request.call_args),
+            "call('http://www.example.com', headers={})")
+        # it is still raised if we turn off debug mode
+        # (it's specified in the ESI spec)
         mw.http.request.side_effect = side_effect
         mw.debug = False
         self.assertRaises(
@@ -200,7 +211,9 @@ class TestProcessInclude(TestCase):
             'onerror="continue"/>after')
         self.assertEquals(data, 'beforeafter')
         self.assertEquals(mw.http.request.call_count, 1)
-        self.assertEquals(str(mw.http.request.call_args), "call('http://www.example.com', headers={})")
+        self.assertEquals(
+            str(mw.http.request.call_args),
+            "call('http://www.example.com', headers={})")
         # if we add a alt we get back the info from alt
         mw = make_mw()
         mw.http.request.side_effect = side_effect
@@ -208,18 +221,27 @@ class TestProcessInclude(TestCase):
             'before<esi:include src="http://www.example.com" '
             'alt="http://alt.example.com"/>after')
         self.assertEquals(data, 'before<div>example alt</div>after')
-        self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
-        # onerror = "continue" has no effect if there is only one error and alt is specified
+        self.assertEquals(
+            str(mw.http.request.call_args_list),
+            "[call('http://www.example.com', headers={}),\n "
+            "call('http://alt.example.com', headers={})]")
+        # onerror = "continue" has no effect,
+        # if there is only one error and alt is specified
         mw = make_mw()
         mw.http.request.side_effect = side_effect
         data = mw._process_include(
             'before<esi:include src="http://www.example.com" '
             'alt="http://alt.example.com" onerror="continue"/>after')
         self.assertEquals(data, 'before<div>example alt</div>after')
-        self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
+        self.assertEquals(
+            str(mw.http.request.call_args_list),
+            "[call('http://www.example.com', headers={}),\n "
+            "call('http://alt.example.com', headers={})]")
         # If both calls to mw.http.request fail, the second exception is raised
+
         class OopsAlt(Exception):
             pass
+
         def side_effect(*args, **kwargs):
             def second_call(*args, **kwargs):
                 raise OopsAlt('oops')
@@ -228,9 +250,17 @@ class TestProcessInclude(TestCase):
 
         mw = make_mw()
         mw.http.request.side_effect = side_effect
-        self.assertRaises(OopsAlt, mw._process_include, 'before<esi:include src="http://www.example.com" alt="http://alt.example.com"/>after')
-        self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
-        # it is still raised if we turn off debug mode (it's specified in the ESI spec)
+        self.assertRaises(
+            OopsAlt,
+            mw._process_include,
+            'before<esi:include src="http://www.example.com" '
+            'alt="http://alt.example.com"/>after')
+        self.assertEquals(
+            str(mw.http.request.call_args_list),
+            "[call('http://www.example.com', headers={}),\n "
+            "call('http://alt.example.com', headers={})]")
+        # it is still raised if we turn off debug mode
+        # (it's specified in the ESI spec)
         mw.http.request.side_effect = side_effect
         mw.debug = False
         self.assertRaises(
@@ -246,7 +276,10 @@ class TestProcessInclude(TestCase):
             'before<esi:include src="http://www.example.com" '
             'alt="http://alt.example.com" onerror="continue"/>after')
         self.assertEquals(data, 'beforeafter')
-        self.assertEquals(str(mw.http.request.call_args_list), "[call('http://www.example.com', headers={}),\n call('http://alt.example.com', headers={})]")
+        self.assertEquals(
+            str(mw.http.request.call_args_list),
+            "[call('http://www.example.com', headers={}),\n "
+            "call('http://alt.example.com', headers={})]")
 
     def test_regression_regex_performance_extra_data(self):
         # processing this data used to take a LOONG time
@@ -274,14 +307,16 @@ class TestMiddleWare(TestCase):
 
         self.assertEquals(mw.http.request.call_count, 1)
 
-        self.assertEquals(str(mw.http.request.call_args),
+        self.assertEquals(
+            str(mw.http.request.call_args),
             "call('http://www.example.com', headers={})")
         self.assertEquals(response, 'before<div>example</div>after')
 
     def test_process_with_forwarded_headers(self):
-        mw = make_mw(app_body='before<esi:include src="http://www.example.com"/>after',
-                     http_content="<div>example</div>",
-                     forward_headers=True)
+        mw = make_mw(
+            app_body='before<esi:include src="http://www.example.com"/>after',
+            http_content="<div>example</div>",
+            forward_headers=True)
 
         run_mw(mw)
 
