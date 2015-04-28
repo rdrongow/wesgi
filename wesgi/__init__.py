@@ -147,32 +147,31 @@ class LRUCache(object):
 class MiddleWare(object):
 
     def __init__(self, app, policy='default', forward_headers=False, debug=True):
-
         self.debug = debug
         self.app = app
         if isinstance(policy, basestring):
             policy = _POLICIES[policy]
         self.policy = policy
-        self.policy.forward_headers = True
-        self.headers = {}
+        self.policy.forward_headers = forward_headers
         self.http = policy.http()
 
     def __call__(self, environ, start_response):
         req = webob.Request(environ)
+        headers = {}
         if self.policy.forward_headers:
-            self.headers = dict(req.headers.items())
+            headers = dict(req.headers.items())
 
         resp = req.get_response(self.app)
         if resp.content_type == 'text/html' and resp.status_int == 200:
             orig_scheme = environ['wsgi.url_scheme']
-            new_body = self._process(resp.body, orig_scheme)
+            new_body = self._process(resp.body, orig_scheme, headers=headers)
             if new_body is not None:
                 resp.body = new_body
         return resp(environ, start_response)
 
-    def _process(self, body, orig_scheme):
+    def _process(self, body, orig_scheme, headers={}):
         commented = self._commented(body)
-        return self._process_include(body, orig_scheme=orig_scheme, comments=commented)
+        return self._process_include(body, orig_scheme=orig_scheme, comments=commented, headers=headers)
 
     def _commented(self, body):
         # identify parts of body which are comments
@@ -193,7 +192,7 @@ class MiddleWare(object):
             comments.append((match.start(), match.end() + 1))
         return tuple(comments)
 
-    def _process_include(self, body, orig_scheme='http', level=0, comments=()):
+    def _process_include(self, body, orig_scheme='http', level=0, comments=(), headers={}):
         debug = self.debug
         policy = self.policy
         comments = list(comments)
@@ -228,11 +227,11 @@ class MiddleWare(object):
                 continue
             # get content to insert
             try:
-                new_content = _include_url(match.group('src'), require_ssl, policy.chase_redirect, self.http, headers=self.headers)
+                new_content = _include_url(match.group('src'), require_ssl, policy.chase_redirect, self.http, headers=headers)
             except:
                 if match.group('alt'):
                     try:
-                        new_content = _include_url(match.group('alt'), require_ssl, policy.chase_redirect, self.http, headers=self.headers)
+                        new_content = _include_url(match.group('alt'), require_ssl, policy.chase_redirect, self.http, headers=headers)
                     except:
                         if match.group('onerror') == 'continue':
                             new_content = ''
@@ -298,7 +297,7 @@ class _HTTPError(Exception):
         message = 'Url returned %s: %s' % (status, url)
         super(_HTTPError, self).__init__(message)
 
-def _include_url(orig_url, require_ssl, chase_redirect, http, headers=None):
+def _include_url(orig_url, require_ssl, chase_redirect, http, headers={}):
     url = urlsplit(orig_url)
     if require_ssl and url.scheme != 'https':
         raise IncludeError('SSL required, cannot include: %s' % (orig_url, ))
